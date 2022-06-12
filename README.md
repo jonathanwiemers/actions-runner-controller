@@ -269,52 +269,29 @@ Alternatively, you can install each controller stack into a unique namespace (re
 - The organization level
 - The enterprise level
 
-There are two ways to use this controller:
+ARC runners can be deployed as 1 of 2 abstractions: 
 
-- Manage runners one by one with `Runner`.
-- Manage a set of runners with `RunnerDeployment`.
+- A `RunnerDeployment`
+- A `RunnerSet`
 
+We go into details about the differences between the 2 abstractions later, initially lets look at how to deploy a basic `RunnerDeployment` at the 3 possible management hierarchies.
 ### Repository Runners
 
-To launch a single self-hosted runner, you need to create a manifest file that includes a `Runner` resource as follows. This example launches a self-hosted runner with name *example-runner* for the *actions-runner-controller/actions-runner-controller* repository.
+To launch a single self-hosted runner, you need to create a manifest file that includes a `RunnerDeployment` resource as follows. This example launches a self-hosted runner with name *example-runnerdeploy* for the *actions-runner-controller/actions-runner-controller* repository.
 
 ```yaml
-# runner.yaml
 apiVersion: actions.summerwind.dev/v1alpha1
-kind: Runner
+kind: RunnerDeployment
 metadata:
-  name: example-runner
+  name: example-runnerdeploy
 spec:
-  repository: example/myrepo
-  env: []
+  replicas: 1
+  template:
+    spec:
+      repository: mumoshu/actions-runner-controller-ci
 ```
 
-Apply the created manifest file to your Kubernetes.
-
-```shell
-$ kubectl apply -f runner.yaml
-runner.actions.summerwind.dev/example-runner created
-```
-
-You can see that the Runner resource has been created.
-
-```shell
-$ kubectl get runners
-NAME             REPOSITORY                             STATUS
-example-runner   actions-runner-controller/actions-runner-controller   Running
-```
-
-You can also see that the runner pod has been running.
-
-```shell
-$ kubectl get pods
-NAME           READY   STATUS    RESTARTS   AGE
-example-runner 2/2     Running   0          1m
-```
-
-The runner you created has been registered to your repository.
-
-<img width="756" alt="Actions tab in your repository settings" src="https://user-images.githubusercontent.com/230145/73618667-8cbf9700-466c-11ea-80b6-c67e6d3f70e7.png">
+The runner you created has been registered directly to the defined repository, you should be able to see it in the settings of the repository.
 
 Now you can use your self-hosted runner. See the [official documentation](https://help.github.com/en/actions/automating-your-workflow-with-github-actions/using-self-hosted-runners-in-a-workflow) on how to run a job with it.
 
@@ -323,13 +300,15 @@ Now you can use your self-hosted runner. See the [official documentation](https:
 To add the runner to an organization, you only need to replace the `repository` field with `organization`, so the runner will register itself to the organization.
 
 ```yaml
-# runner.yaml
 apiVersion: actions.summerwind.dev/v1alpha1
-kind: Runner
+kind: RunnerDeployment
 metadata:
-  name: example-org-runner
+  name: example-runnerdeploy
 spec:
-  organization: your-organization-name
+  replicas: 1
+  template:
+    spec:
+      organization: your-organization-name
 ```
 
 Now you can see the runner on the organization level (if you have organization owner permissions).
@@ -339,24 +318,22 @@ Now you can see the runner on the organization level (if you have organization o
 To add the runner to an enterprise, you only need to replace the `repository` field with `enterprise`, so the runner will register itself to the enterprise.
 
 ```yaml
-# runner.yaml
 apiVersion: actions.summerwind.dev/v1alpha1
-kind: Runner
+kind: RunnerDeployment
 metadata:
-  name: example-enterprise-runner
+  name: example-runnerdeploy
 spec:
-  enterprise: your-enterprise-name
+  replicas: 1
+  template:
+    spec:
+      enterprise: your-enterprise-name
 ```
 
 Now you can see the runner on the enterprise level (if you have enterprise access permissions).
 
 ### RunnerDeployments
 
-You can manage sets of runners instead of individually through the `RunnerDeployment` kind and its `replicas:` attribute. This kind is required for many of the advanced features.
-
-There are `RunnerReplicaSet` and `RunnerDeployment` kinds that corresponds to the `ReplicaSet` and `Deployment` kinds but for the `Runner` kind.
-
-You typically only need `RunnerDeployment` rather than `RunnerReplicaSet` as the former is for managing the latter.
+In our previous examples we were deploying a single runner via the `RunnerDeployment` kind, the amount of runners deployed is controlled via the `replicas:` fields, we can increase this value to deploy sets of runners instead:
 
 ```yaml
 # runnerdeployment.yaml
@@ -369,7 +346,6 @@ spec:
   template:
     spec:
       repository: mumoshu/actions-runner-controller-ci
-      env: []
 ```
 
 Apply the manifest file to your cluster:
@@ -388,9 +364,9 @@ example-runnerdeploy2475h595fr   mumoshu/actions-runner-controller-ci   Running
 example-runnerdeploy2475ht2qbr   mumoshu/actions-runner-controller-ci   Running
 ```
 
-  ### RunnerSets
+### RunnerSets
 
-> This feature requires controller version => [v0.20.0](https://github.com/actions-runner-controller/actions-runner-controller/releases/tag/v0.20.0)
+> This feature requires controller version => [v0.20.0](https://github.com/actions-runner-controller/actions-runner-controller/releases/tag/v0.20.0) however for full feature support this feature requires controller version => [v0.24.0](https://github.com/actions-runner-controller/actions-runner-controller/releases/tag/v0.24.0)
 
 _Ensure you see the limitations before using this kind!!!!!_
 
@@ -491,13 +467,11 @@ Under the hood, `RunnerSet` relies on Kubernetes's `StatefulSet` and Mutating We
 
 ### Persistent Runners
 
-Every runner managed by ARC is "ephemeral" by default. The life of an ephemeral runner managed by ARC looks like this- ARC creates a runner pod for the runner. As it's an ephemeral runner, the `--ephemeral` flag is passed to the `actions/runner` agent that runs within the `runner` container of the runner pod.
+Every runner managed by ARC is "ephemeral" by default. The life of an ephemeral runner managed by ARC looks like this:
 
-`--ephemeral` is an `actions/runner` feature that instructs the runner to stop and de-register itself after the first job run.
-
-Once the ephemeral runner has completed running a workflow job, it stops with a status code of 0, hence the runner pod is marked as completed, removed by ARC.
-
-As it's removed after a workflow job run, the runner pod is never reused across multiple GitHub Actions workflow jobs, providing you a clean environment per each workflow job.
+1. ARC creates a runner pod for the runner. As it's an ephemeral runner, the `--ephemeral` flag is passed to the `actions/runner` agent that runs within the `runner` container of the runner pod. `--ephemeral` is an `actions/runner` feature that instructs the runner to stop and de-register itself after the first job run.
+2. Once the ephemeral runner has completed running a workflow job, it stops with a status code of 0, hence the runner pod is marked as completed, removed by ARC.
+3. As it's removed after a workflow job run, the runner pod is never reused across multiple GitHub Actions workflow jobs, providing you a clean environment per each workflow job.
 
 Although not generally recommended, it's possible to disable the passing of the `--ephemeral` flag by explicitly setting `ephemeral: false` in the `RunnerDeployment` or `RunnerSet` spec. When disabled, your runner becomes "persistent". A persistent runner does not stop after workflow job ends, and in this mode `actions/runner` is known to clean only runner's work dir after each job. Whilst this can seem helpful it creates a non-deterministic environment which is not ideal for a CI/CD environment. Between runs, your actions cache, docker images stored in the `dind` and layer cache, globally installed packages etc are retained across multiple workflow job runs which can cause issues that are hard to debug and inconsistent.
 
