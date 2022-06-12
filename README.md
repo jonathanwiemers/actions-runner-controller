@@ -40,7 +40,7 @@ ToC:
   - [Using without cert-manager](#using-without-cert-manager)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
-
+- [Implementation](#implementation)
 
 ## People
 
@@ -1660,3 +1660,7 @@ See [troubleshooting guide](TROUBLESHOOTING.md) for solutions to various problem
 # Contributing
 
 For more details on contributing to the project (including requirements) please check out [Getting Started with Contributing](CONTRIBUTING.md).
+
+# Implementation
+
+For those interested, additional documentation is maintained detailing more of the [implementation](IMPLEMENTATION.md) plumbing that is not needed as an end user 
